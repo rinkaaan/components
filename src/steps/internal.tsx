@@ -81,14 +81,14 @@ const InternalStep = ({
 
 const InternalSteps = ({
   steps,
-  orientation,
+  orientation = 'vertical',
   renderStep,
   ariaLabel,
   ariaLabelledby,
   ariaDescribedby,
   __internalRootRef,
   ...props
-}: SomeRequired<InternalStepsProps, 'orientation'>) => {
+}: InternalStepsProps) => {
   return (
     <div
       {...props}
