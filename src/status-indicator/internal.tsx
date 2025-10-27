@@ -82,7 +82,8 @@ export default function StatusIndicator({
           styles.container,
           styles[`display-${__display}`],
           wrapText === false && styles['overflow-ellipsis'],
-          __animate && styles['container-fade-in']
+          __animate && styles['container-fade-in'],
+          !children && styles['no-text']
         )}
       >
         <span
