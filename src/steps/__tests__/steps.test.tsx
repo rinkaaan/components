@@ -185,6 +185,7 @@ describe('Steps', () => {
     const customRenderStep = (step: StepsProps.Step) => ({
       header: <span data-testid="custom-header">Custom: {step.header}</span>,
       details: step.details ? <div data-testid="custom-details">Details: {step.details}</div> : undefined,
+      icon: <span data-testid="custom-icon">icon</span>,
     });
 
     test('renders custom content when using renderStep', () => {
@@ -206,7 +207,7 @@ describe('Steps', () => {
       expect(customDetails[0].getElement()).toHaveTextContent('Step details');
     });
 
-    test('does not render status indicators when using renderStep', () => {
+    test('does not render status indicators when using renderStep with icon', () => {
       const wrapper = renderSteps({ steps: stepsForCustomRender, renderStep: customRenderStep });
 
       expect(wrapper.findItems()[0].findHeader()?.findStatusIndicator()).toBeNull();
