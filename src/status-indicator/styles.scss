@@ -61,10 +61,6 @@ $_color-overrides: (
       padding-inline-end: awsui.$space-xxs;
     }
   }
-
-  &.no-text > .icon {
-    padding-inline-end: 0;
-  }
 }
 
 .overflow-ellipsis {

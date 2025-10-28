@@ -7,7 +7,7 @@ import { BoxProps } from '../box/interfaces';
 import InternalBox from '../box/internal';
 import { InternalBaseComponentProps } from '../internal/hooks/use-base-component';
 import { SomeRequired } from '../internal/types';
-import StatusIndicator from '../status-indicator/internal';
+import InternalStatusIndicator, { InternalStatusIcon } from '../status-indicator/internal';
 import { StepsProps } from './interfaces';
 
 import styles from './styles.css.js';
@@ -39,7 +39,7 @@ const CustomStep = ({
   return (
     <li className={styles.container}>
       <div className={styles.header}>
-        {icon ? icon : <StatusIndicator type={status} iconAriaLabel={statusIconAriaLabel} />}
+        {icon ? icon : <InternalStatusIcon type={status} iconAriaLabel={statusIconAriaLabel} size="normal" />}
         {orientation === 'vertical' ? header : <hr className={styles.connector} role="none" />}
       </div>
       {orientation === 'vertical' ? (
@@ -62,10 +62,18 @@ const InternalStep = ({
   return (
     <li className={styles.container}>
       <div className={styles.header}>
-        <StatusIndicator type={status} iconAriaLabel={statusIconAriaLabel}>
-          {orientation === 'vertical' && header}
-        </StatusIndicator>
-        {orientation === 'horizontal' && <hr className={styles.connector} role="none" />}
+        {orientation === 'vertical' ? (
+          <InternalStatusIndicator type={status} iconAriaLabel={statusIconAriaLabel}>
+            {header}
+          </InternalStatusIndicator>
+        ) : (
+          <>
+            <InternalBox color={statusToColor[status]}>
+              <InternalStatusIcon type={status} iconAriaLabel={statusIconAriaLabel} size="normal" />
+            </InternalBox>
+            <hr className={styles.connector} role="none" />
+          </>
+        )}
       </div>
       {orientation === 'vertical' ? (
         <hr className={styles.connector} role="none" />
