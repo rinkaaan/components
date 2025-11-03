@@ -33,7 +33,7 @@ export default function PermutationsView<T>({ permutations, render }: Permutatio
       {permutations.map((permutation, index) => {
         const id = JSON.stringify(permutation, formatValue);
         return (
-          <div key={id} data-permutation={id}>
+          <div key={id} data-permutation={id} data-permutation-index={index}>
             {render(permutation, index)}
           </div>
         );
