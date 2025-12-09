@@ -16,97 +16,13 @@ import { InternalBaseComponentProps } from '../internal/hooks/use-base-component
 import { useVisualRefresh } from '../internal/hooks/use-visual-mode';
 import { SomeRequired } from '../internal/types';
 import WithNativeAttributes from '../internal/utils/with-native-attributes';
-import Token from '../token/internal';
 import { PromptInputProps } from './interfaces';
+import { findNodeAndOffset, restoreSelection, saveSelection, setCursorToEnd } from './selection-utils';
 import { getPromptInputStyles } from './styles';
-import { getPromptText } from './utils';
+import { domToTokenArray, getPromptText, renderTokensToDOM } from './token-utils';
 
 import styles from './styles.css.js';
 import testutilStyles from './test-classes/styles.css.js';
-
-/**
- * Renders tokens array into a contentEditable element.
- * Text tokens are rendered as text nodes, reference tokens as Token components.
- */
-function renderTokensToDOM(
-  tokens: readonly PromptInputProps.InputToken[],
-  targetElement: HTMLElement,
-  reactContainers: Set<HTMLElement>
-): void {
-  // Clean up previous render
-  reactContainers.forEach(container => ReactDOM.unmountComponentAtNode(container));
-  reactContainers.clear();
-  targetElement.innerHTML = '';
-
-  tokens.forEach(token => {
-    if (token.type === 'text') {
-      targetElement.appendChild(document.createTextNode(token.text));
-    } else if (token.type === 'reference') {
-      const container = document.createElement('span');
-      container.style.display = 'inline';
-      container.contentEditable = 'false';
-      container.setAttribute('data-token-id', token.id);
-      container.setAttribute('data-token-type', 'reference');
-      container.setAttribute('data-token-value', token.value);
-
-      targetElement.appendChild(container);
-      reactContainers.add(container);
-
-      ReactDOM.render(<Token variant="inline" label={token.label} value={token.value} />, container);
-    }
-  });
-
-  // Ensure cursor can be placed at end
-  if (targetElement.lastChild?.nodeType === Node.ELEMENT_NODE) {
-    targetElement.appendChild(document.createTextNode(''));
-  }
-}
-
-/**
- * Extracts tokens array from contentEditable DOM.
- * Converts text nodes to TextInputToken and Token components to ReferenceInputToken.
- */
-function domToTokenArray(element: HTMLElement): PromptInputProps.InputToken[] {
-  const tokens: PromptInputProps.InputToken[] = [];
-  let currentText = '';
-
-  const flushText = () => {
-    if (currentText) {
-      tokens.push({ type: 'text', text: currentText });
-      currentText = '';
-    }
-  };
-
-  const processNode = (node: Node) => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      currentText += node.textContent || '';
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
-      const element = node as HTMLElement;
-      const tokenId = element.getAttribute('data-token-id');
-      const tokenType = element.getAttribute('data-token-type');
-
-      if (tokenType === 'reference' && tokenId) {
-        flushText();
-        const label = element.textContent || '';
-        const value = element.getAttribute('data-token-value') || label;
-        tokens.push({
-          type: 'reference',
-          id: tokenId,
-          label,
-          value,
-        });
-      } else {
-        // Process children for other elements
-        Array.from(node.childNodes).forEach(processNode);
-      }
-    }
-  };
-
-  Array.from(element.childNodes).forEach(processNode);
-  flushText();
-
-  return tokens;
-}
 
 interface InternalPromptInputProps
   extends SomeRequired<PromptInputProps, 'maxRows' | 'minRows'>,
@@ -146,59 +62,54 @@ const InternalPromptInput = React.forwardRef(
       disableSecondaryContentPaddings,
       nativeTextareaAttributes,
       style,
-      // Shortcuts
       tokens,
+      tokensToText,
+      mode,
+      onModeRemoved,
       menus,
-      activeMenuId,
+      onMenuSelect,
+      onMenuLoadItems,
+      menuErrorIconAriaLabel,
       __internalRootRef,
       ...rest
     }: InternalPromptInputProps,
     ref: Ref<PromptInputProps.Ref>
   ) => {
     const { ariaLabelledby, ariaDescribedby, controlId, invalid, warning } = useFormFieldContext(rest);
-
     const baseProps = getBaseProps(rest);
 
+    // Refs
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const editableElementRef = useRef<HTMLDivElement>(null);
-
     const reactContainersRef = useRef<Set<HTMLElement>>(new Set());
     const isRenderingRef = useRef(false);
     const lastTokensRef = useRef<readonly PromptInputProps.InputToken[] | undefined>(tokens);
     const savedSelectionRef = useRef<Range | null>(null);
+    const lastModeRef = useRef<PromptInputProps.InputToken | undefined>(mode);
 
+    // Mode detection
     const isRefresh = useVisualRefresh();
-    const isTextAreaCompactMode = useDensityMode(textareaRef) === 'compact';
-    const isEditableElementCompactMode = useDensityMode(editableElementRef) === 'compact';
-    const isCompactMode = isTextAreaCompactMode || isEditableElementCompactMode;
-    const isMenusEnabled = tokens || menus;
+    useDensityMode(textareaRef);
+    useDensityMode(editableElementRef);
+    const isTokenMode = !!tokens;
 
+    // Style constants
     const PADDING = isRefresh ? designTokens.spaceXxs : designTokens.spaceXxxs;
     const LINE_HEIGHT = designTokens.lineHeightBodyM;
-    const DEFAULT_MAX_ROWS = 3;
-
-    useEffect(() => {
-      console.log('Active menu is:', activeMenuId);
-    }, [activeMenuId]);
 
     useImperativeHandle(
       ref,
       () => ({
         focus(...args: Parameters<HTMLElement['focus']>) {
-          if (isMenusEnabled) {
+          if (isTokenMode) {
             editableElementRef.current?.focus(...args);
-            // Restore saved selection if available
-            if (savedSelectionRef.current) {
-              const selection = window.getSelection();
-              selection?.removeAllRanges();
-              selection?.addRange(savedSelectionRef.current.cloneRange());
-            }
+            restoreSelection(savedSelectionRef.current);
           } else {
             textareaRef.current?.focus(...args);
           }
         },
         select() {
-          if (isMenusEnabled) {
+          if (isTokenMode) {
             const selection = window.getSelection();
             const range = document.createRange();
             if (editableElementRef.current) {
@@ -211,52 +122,15 @@ const InternalPromptInput = React.forwardRef(
           }
         },
         setSelectionRange(...args: Parameters<HTMLTextAreaElement['setSelectionRange']>) {
-          if (isMenusEnabled) {
-            if (!editableElementRef.current) {
-              return;
-            }
-
+          if (isTokenMode && editableElementRef.current) {
             const [start, end] = args;
             const selection = window.getSelection();
             if (!selection) {
               return;
             }
 
-            // Helper to find node and offset for a given character position
-            // Reference tokens count as 1 character each
-            const findNodeAndOffset = (targetOffset: number): { node: Node; offset: number } | null => {
-              let currentOffset = 0;
-
-              for (const child of Array.from(editableElementRef.current!.childNodes)) {
-                // Reference token element - counts as 1 character
-                if (
-                  child.nodeType === Node.ELEMENT_NODE &&
-                  (child as HTMLElement).getAttribute('data-token-type') === 'reference'
-                ) {
-                  if (currentOffset === targetOffset) {
-                    return { node: child, offset: 0 };
-                  }
-                  currentOffset += 1;
-                  continue;
-                }
-
-                // Text node
-                if (child.nodeType === Node.TEXT_NODE) {
-                  const textLength = child.textContent?.length || 0;
-                  if (currentOffset + textLength >= targetOffset) {
-                    return { node: child, offset: targetOffset - currentOffset };
-                  }
-                  currentOffset += textLength;
-                }
-              }
-
-              // Return last position if not found
-              const lastChild = editableElementRef.current!.lastChild;
-              return lastChild ? { node: lastChild, offset: lastChild.textContent?.length || 0 } : null;
-            };
-
-            const startPos = findNodeAndOffset(start ?? 0);
-            const endPos = findNodeAndOffset(end ?? 0);
+            const startPos = findNodeAndOffset(editableElementRef.current, start ?? 0);
+            const endPos = findNodeAndOffset(editableElementRef.current, end ?? 0);
 
             if (startPos && endPos) {
               const range = document.createRange();
@@ -270,8 +144,39 @@ const InternalPromptInput = React.forwardRef(
           }
         },
       }),
-      [isMenusEnabled, textareaRef, editableElementRef]
+      [isTokenMode]
     );
+
+    /**
+     * Dynamically adjusts the input height based on content and row constraints.
+     */
+    const adjustInputHeight = useCallback(() => {
+      const element = isTokenMode ? editableElementRef.current : textareaRef.current;
+      if (!element) {
+        return;
+      }
+
+      // Preserve scroll position for token mode
+      const scrollTop = element.scrollTop;
+      element.style.height = 'auto';
+
+      const minRowsHeight = isTokenMode
+        ? `calc(${minRows} * (${LINE_HEIGHT} + ${PADDING} / 2) + ${PADDING})`
+        : `calc(${LINE_HEIGHT} + ${designTokens.spaceScaledXxs} * 2)`;
+      const scrollHeight = `calc(${element.scrollHeight}px)`;
+
+      if (maxRows === -1) {
+        element.style.height = `max(${scrollHeight}, ${minRowsHeight})`;
+      } else {
+        const effectiveMaxRows = maxRows <= 0 ? 3 : maxRows;
+        const maxRowsHeight = `calc(${effectiveMaxRows} * (${LINE_HEIGHT} + ${PADDING} / 2) + ${PADDING})`;
+        element.style.height = `min(max(${scrollHeight}, ${minRowsHeight}), ${maxRowsHeight})`;
+      }
+
+      if (isTokenMode) {
+        element.scrollTop = scrollTop;
+      }
+    }, [isTokenMode, minRows, maxRows, LINE_HEIGHT, PADDING]);
 
     const handleTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
       fireKeyboardEvent(onKeyDown, event);
@@ -281,8 +186,18 @@ const InternalPromptInput = React.forwardRef(
           event.currentTarget.form.requestSubmit();
         }
         event.preventDefault();
-        fireNonCancelableEvent(onAction, { value, tokens: [...(tokens ?? [])] });
+        const plainText = isTokenMode
+          ? tokensToText
+            ? tokensToText(tokens ?? [])
+            : getPromptText(tokens ?? [])
+          : value;
+        fireNonCancelableEvent(onAction, { value: plainText, tokens: [...(tokens ?? [])] });
       }
+    };
+
+    const handleTextareaChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      fireNonCancelableEvent(onChange, { value: event.target.value, tokens: [...(tokens ?? [])] });
+      adjustInputHeight();
     };
 
     const handleEditableElementKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -294,180 +209,215 @@ const InternalPromptInput = React.forwardRef(
           form.requestSubmit();
         }
         event.preventDefault();
-        fireNonCancelableEvent(onAction, { value, tokens: [...(tokens ?? [])] });
+        const plainText = tokensToText ? tokensToText(tokens ?? []) : getPromptText(tokens ?? []);
+        fireNonCancelableEvent(onAction, { value: plainText, tokens: [...(tokens ?? [])] });
       }
 
-      // Detect space key for @mention and /command conversion (prototype feature)
-      if (event.key === ' ' && editableElementRef.current) {
+      // Single-backspace deletion for tokens
+      if (event.key === 'Backspace') {
         const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          const textNode = range.startContainer;
+        if (!selection?.rangeCount || !selection.isCollapsed) {
+          return;
+        }
 
-          if (textNode.nodeType === Node.TEXT_NODE && textNode.textContent) {
-            const textBeforeCursor = textNode.textContent.substring(0, range.startOffset);
+        const range = selection.getRangeAt(0);
+        let nodeToCheck = range.startContainer;
 
-            // Check for @mention pattern (can appear anywhere after whitespace)
-            const mentionMatch = textBeforeCursor.match(/(^|\s)@(\w+)$/);
-            // Check for /command pattern (only at the very start)
-            const commandMatch = textBeforeCursor.match(/^\/(\w+)$/);
+        // If at start of text node, check previous sibling
+        if (nodeToCheck.nodeType === Node.TEXT_NODE && range.startOffset === 0) {
+          nodeToCheck = nodeToCheck.previousSibling as Node;
+        }
+        // If cursor is in the contentEditable itself (not in a text node), check last child
+        else if (nodeToCheck === editableElementRef.current && range.startOffset > 0) {
+          nodeToCheck = editableElementRef.current.childNodes[range.startOffset - 1];
+        }
 
-            const match = commandMatch || mentionMatch;
-            const isCommand = !!commandMatch;
-
-            if (match) {
-              event.preventDefault();
-
-              const matchText = match[2] || match[1]; // command uses [1], mention uses [2]
-              const beforeMatch = isCommand ? '' : textBeforeCursor.substring(0, match.index! + match[1].length);
-              const afterCursor = textNode.textContent.substring(range.startOffset);
-
-              // Create reference token
-              const tokenId = isCommand ? `command:${matchText}` : `file:${matchText}`;
-              const tokenValue = isCommand
-                ? `<command>${matchText}</command>`
-                : `<file_content path="some_test_file.txt">${matchText}</file_content>`;
-
-              const parent = textNode.parentNode as HTMLElement;
-              const beforeText = document.createTextNode(beforeMatch);
-              const spaceText = document.createTextNode(' ');
-              const afterText = document.createTextNode(afterCursor);
-
-              if (beforeMatch) {
-                parent.insertBefore(beforeText, textNode);
-              }
-
-              // Render reference token
-              const container = document.createElement('span');
-              container.style.display = 'inline';
-              container.contentEditable = 'false';
-              container.setAttribute('data-token-id', tokenId);
-              container.setAttribute('data-token-type', 'reference');
-              container.setAttribute('data-token-value', tokenValue);
-
-              parent.insertBefore(container, textNode);
-              reactContainersRef.current.add(container);
-              ReactDOM.render(<Token variant="inline" label={matchText} value={tokenValue} />, container);
-
-              parent.insertBefore(spaceText, textNode);
-              parent.insertBefore(afterText, textNode);
-              parent.removeChild(textNode);
-
-              // Place cursor after the space
-              const newRange = document.createRange();
-              newRange.setStart(spaceText, 1);
-              newRange.collapse(true);
-              selection.removeAllRanges();
-              selection.addRange(newRange);
-
-              // Trigger change event
-              const changeEvent = new Event('input', { bubbles: true });
-              editableElementRef.current.dispatchEvent(changeEvent);
+        // If we're about to delete an empty text node, check if there's a token before it
+        if (nodeToCheck?.nodeType === Node.TEXT_NODE && nodeToCheck.textContent === '') {
+          const previousNode = nodeToCheck.previousSibling;
+          if (previousNode?.nodeType === Node.ELEMENT_NODE) {
+            const element = previousNode as Element;
+            if (element.hasAttribute('data-token-type')) {
+              // Skip the empty text node and target the token instead
+              nodeToCheck = previousNode;
             }
+          }
+        }
+
+        // Check if it's a token element
+        if (nodeToCheck?.nodeType === Node.ELEMENT_NODE) {
+          const element = nodeToCheck as Element;
+          const tokenType = element.getAttribute('data-token-type');
+
+          if (tokenType === 'mode') {
+            // For mode tokens, fire the callback and let parent handle state
+            event.preventDefault();
+            if (onModeRemoved) {
+              fireNonCancelableEvent(onModeRemoved, { mode: undefined });
+            }
+          } else if (tokenType) {
+            // For other tokens (like references), remove directly
+            event.preventDefault();
+            element.remove();
+            editableElementRef.current?.dispatchEvent(new Event('input', { bubbles: true }));
           }
         }
       }
     };
 
-    const handleChangeTextArea = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-      fireNonCancelableEvent(onChange, { value: event.target.value, tokens: [...(tokens ?? [])] });
-      adjustInputHeight();
-    };
-
-    const handleChangeEditableElement: React.FormEventHandler<HTMLDivElement> = () => {
-      if (isRenderingRef.current) {
-        return; // Skip onChange during programmatic rendering
-      }
-
-      if (!editableElementRef.current) {
+    const handleEditableElementChange = useCallback<React.FormEventHandler<HTMLDivElement>>(() => {
+      if (isRenderingRef.current || !editableElementRef.current) {
         return;
       }
 
-      // Extract tokens from DOM
-      const extractedTokens = domToTokenArray(editableElementRef.current);
-      const plainText = getPromptText(extractedTokens);
+      let extractedTokens = domToTokenArray(editableElementRef.current);
 
-      // Update ref to track that this change came from user input
-      lastTokensRef.current = extractedTokens;
+      // TEMPORARY: Convert /word to mode tokens and @word to reference tokens
+      // This is prototype functionality and should be replaced with proper menu system
+      const processedTokens: PromptInputProps.InputToken[] = [];
+      let detectedMode: PromptInputProps.InputToken | undefined;
 
-      fireNonCancelableEvent(onChange, { value: plainText, tokens: extractedTokens });
-      adjustInputHeight();
-    };
+      extractedTokens.forEach(token => {
+        if (token.type === 'text' && token.value) {
+          const text = token.value;
+          // Match /word or @word followed by space
+          const pattern = /(\/\w+\s|@\w+\s)/g;
+          let lastIndex = 0;
+          let match;
+          let textBuffer = '';
 
-    const hasActionButton = actionButtonIconName || actionButtonIconSvg || actionButtonIconUrl || customPrimaryAction;
+          while ((match = pattern.exec(text)) !== null) {
+            // Add any text before the match to buffer
+            textBuffer += text.substring(lastIndex, match.index);
 
-    const adjustInputHeight = useCallback(() => {
-      if (editableElementRef.current || textareaRef.current) {
-        const element = isMenusEnabled ? editableElementRef.current : textareaRef.current;
-        // Save scroll position before adjusting height
-        const scrollTop = element!.scrollTop;
-
-        // this is required so the scrollHeight becomes dynamic, otherwise it will be locked at the highest value for the size it reached e.g. 500px
-        element!.style.height = 'auto';
-
-        const minRowsHeight = isMenusEnabled
-          ? `calc(${minRows} * (${LINE_HEIGHT} + ${PADDING} / 2) + ${PADDING})`
-          : `calc(${LINE_HEIGHT} +  ${designTokens.spaceScaledXxs} * 2)`;
-        const scrollHeight = `calc(${element!.scrollHeight}px)`;
-
-        if (maxRows === -1) {
-          element!.style.height = `max(${scrollHeight}, ${minRowsHeight})`;
-        } else {
-          const maxRowsHeight = `calc(${maxRows <= 0 ? DEFAULT_MAX_ROWS : maxRows} * (${LINE_HEIGHT} + ${PADDING} / 2) + ${PADDING})`;
-          element!.style.height = `min(max(${scrollHeight}, ${minRowsHeight}), ${maxRowsHeight})`;
-        }
-
-        if (isMenusEnabled) {
-          // Restore scroll position after adjusting height
-          element!.scrollTop = scrollTop;
-        }
-      }
-    }, [isMenusEnabled, minRows, LINE_HEIGHT, PADDING, maxRows]);
-
-    useEffect(() => {
-      const handleResize = () => {
-        adjustInputHeight();
-      };
-
-      window.addEventListener('resize', handleResize);
-
-      return () => {
-        window.removeEventListener('resize', handleResize);
-      };
-    }, [adjustInputHeight]);
-
-    // Render tokens into contentEditable when they change externally (not from user typing)
-    useEffect(() => {
-      if (isMenusEnabled && editableElementRef.current && tokens) {
-        // Only re-render if tokens changed from outside (not from user input)
-        if (tokens !== lastTokensRef.current) {
-          isRenderingRef.current = true;
-          renderTokensToDOM(tokens, editableElementRef.current, reactContainersRef.current);
-          isRenderingRef.current = false;
-          lastTokensRef.current = tokens;
-
-          // Position cursor at the end of the content when tokens are set externally
-          requestAnimationFrame(() => {
-            if (!editableElementRef.current) {
-              return;
+            // Flush text buffer if not empty
+            if (textBuffer) {
+              processedTokens.push({ type: 'text', value: textBuffer });
+              textBuffer = '';
             }
 
-            // Position cursor at the end of the editable element
-            const range = document.createRange();
-            const selection = window.getSelection();
-            range.selectNodeContents(editableElementRef.current);
-            range.collapse(false); // false = collapse to end
-            selection?.removeAllRanges();
-            selection?.addRange(range);
-          });
+            const matchedText = match[0];
+            const trigger = matchedText[0]; // "/" or "@"
+            const word = matchedText.substring(1).trim(); // Remove trigger and trailing space
+
+            if (trigger === '/' && !mode) {
+              // Only convert /word to mode token if no mode is already set
+              detectedMode = {
+                type: 'mode',
+                id: word,
+                label: word,
+                value: `<mode id="${word}">Some dummy mode system prompt</mode>`,
+              };
+            } else if (trigger === '/' && mode) {
+              // If mode already exists, keep /word as text
+              textBuffer += matchedText;
+            } else if (trigger === '@') {
+              // Convert @word to reference token
+              processedTokens.push({
+                type: 'reference',
+                id: word,
+                label: word,
+                value: `<dummy_mention id="${word}">Some dummy details</dummy_mention>`,
+              });
+            }
+
+            lastIndex = pattern.lastIndex;
+          }
+
+          // Add any remaining text
+          textBuffer += text.substring(lastIndex);
+          if (textBuffer) {
+            processedTokens.push({ type: 'text', value: textBuffer });
+          }
+        } else {
+          processedTokens.push(token);
+        }
+      });
+
+      extractedTokens = processedTokens;
+
+      const plainText = tokensToText ? tokensToText(extractedTokens) : getPromptText(extractedTokens);
+
+      // Check if mode token was removed from the DOM
+      if (lastModeRef.current && onModeRemoved) {
+        const hasModeToken = editableElementRef.current.querySelector('[data-token-type="mode"]');
+        if (!hasModeToken) {
+          // Mode token was removed, notify parent
+          fireNonCancelableEvent(onModeRemoved, { mode: undefined });
+          lastModeRef.current = undefined;
         }
       }
 
-      adjustInputHeight();
-    }, [isMenusEnabled, tokens, value, adjustInputHeight, maxRows, isCompactMode]);
+      // If we detected new tokens (mode or reference), re-render them as Token elements
+      const hasNewTokens =
+        detectedMode ||
+        extractedTokens.some(
+          (token, index) =>
+            token.type === 'reference' &&
+            (!lastTokensRef.current ||
+              !lastTokensRef.current[index] ||
+              lastTokensRef.current[index].type !== 'reference')
+        );
 
+      if (hasNewTokens && editableElementRef.current) {
+        isRenderingRef.current = true;
+        const allTokens = detectedMode ? [detectedMode, ...extractedTokens] : extractedTokens;
+        renderTokensToDOM(allTokens, editableElementRef.current, reactContainersRef.current);
+        isRenderingRef.current = false;
+        // Place cursor at the end after rendering tokens
+        setCursorToEnd(editableElementRef.current);
+      }
+
+      // Filter out mode tokens from extractedTokens - mode is tracked separately
+      const tokensWithoutMode = extractedTokens.filter(token => token.type !== 'mode');
+
+      lastTokensRef.current = tokensWithoutMode;
+      fireNonCancelableEvent(onChange, { value: plainText, tokens: tokensWithoutMode, mode: detectedMode });
+      adjustInputHeight();
+    }, [tokensToText, onModeRemoved, onChange, adjustInputHeight, mode]);
+
+    const handleEditableElementBlur = useCallback(() => {
+      if (isTokenMode) {
+        savedSelectionRef.current = saveSelection();
+      }
+      if (onBlur) {
+        fireNonCancelableEvent(onBlur);
+      }
+    }, [isTokenMode, onBlur]);
+
+    // Render tokens into contentEditable when they change externally
     useEffect(() => {
-      if (isMenusEnabled && autoFocus && editableElementRef.current) {
+      if (isTokenMode && editableElementRef.current) {
+        // Only re-render if tokens or mode changed from outside (not from user input)
+        if (tokens !== lastTokensRef.current || mode !== lastModeRef.current) {
+          isRenderingRef.current = true;
+          // Combine mode token (if exists) with regular tokens
+          const allTokens = mode ? [mode, ...(tokens ?? [])] : (tokens ?? []);
+          renderTokensToDOM(allTokens, editableElementRef.current, reactContainersRef.current);
+          isRenderingRef.current = false;
+          lastTokensRef.current = tokens;
+          lastModeRef.current = mode;
+          setCursorToEnd(editableElementRef.current);
+        }
+      }
+      adjustInputHeight();
+    }, [isTokenMode, tokens, mode, adjustInputHeight]);
+
+    // Handle window resize
+    useEffect(() => {
+      const handleResize = () => adjustInputHeight();
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }, [adjustInputHeight]);
+
+    // Track mode changes
+    useEffect(() => {
+      lastModeRef.current = mode;
+    }, [mode]);
+
+    // Auto-focus on mount
+    useEffect(() => {
+      if (isTokenMode && autoFocus && editableElementRef.current) {
         editableElementRef.current.focus();
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -477,12 +427,33 @@ const InternalPromptInput = React.forwardRef(
     useEffect(() => {
       const containers = reactContainersRef.current;
       return () => {
-        containers.forEach(container => {
-          ReactDOM.unmountComponentAtNode(container);
-        });
+        containers.forEach(container => ReactDOM.unmountComponentAtNode(container));
         containers.clear();
       };
     }, []);
+
+    // Future: Implement menu trigger detection and dropdown rendering
+    // When menus are defined, detect trigger characters and show appropriate menu
+    // Use onMenuSelect to handle option selection
+    // Use onMenuLoadItems for async menu data loading
+    // Use menuErrorIconAriaLabel for accessibility in error states
+    void menus;
+    void onMenuSelect;
+    void onMenuLoadItems;
+    void menuErrorIconAriaLabel;
+
+    const hasActionButton = !!(
+      actionButtonIconName ||
+      actionButtonIconSvg ||
+      actionButtonIconUrl ||
+      customPrimaryAction
+    );
+
+    const showPlaceholder =
+      isTokenMode &&
+      placeholder &&
+      !mode &&
+      (!tokens || tokens.length === 0 || (tokens.length === 1 && tokens[0].type === 'text' && !tokens[0].value));
 
     const textareaAttributes: React.TextareaHTMLAttributes<HTMLTextAreaElement> = {
       'aria-label': ariaLabel,
@@ -497,24 +468,19 @@ const InternalPromptInput = React.forwardRef(
         [styles.warning]: warning,
       }),
       autoComplete: convertAutoComplete(autoComplete),
+      autoCorrect: disableBrowserAutocorrect ? 'off' : undefined,
+      autoCapitalize: disableBrowserAutocorrect ? 'off' : undefined,
       spellCheck: spellcheck,
       disabled,
       readOnly: readOnly ? true : undefined,
       rows: minRows,
+      value: value || '',
       onKeyDown: handleTextareaKeyDown,
       onKeyUp: onKeyUp && (event => fireKeyboardEvent(onKeyUp, event)),
-      // We set a default value on the component in order to force it into the controlled mode.
-      value: value || '',
-      onChange: handleChangeTextArea,
+      onChange: handleTextareaChange,
       onBlur: onBlur && (() => fireNonCancelableEvent(onBlur)),
       onFocus: onFocus && (() => fireNonCancelableEvent(onFocus)),
     };
-
-    // Determine if placeholder should be visible
-    const showEditableElementPlaceholder =
-      isMenusEnabled &&
-      placeholder &&
-      (!tokens || tokens.length === 0 || (tokens.length === 1 && tokens[0].type === 'text' && !tokens[0].text));
 
     const editableElementAttributes: React.HTMLAttributes<HTMLDivElement> & {
       'data-placeholder'?: string;
@@ -531,35 +497,19 @@ const InternalPromptInput = React.forwardRef(
         [styles.invalid]: invalid,
         [styles.warning]: warning,
         [styles['textarea-disabled']]: disabled,
-        [styles['placeholder-visible']]: showEditableElementPlaceholder,
+        [styles['placeholder-visible']]: showPlaceholder,
       }),
+      autoCorrect: disableBrowserAutocorrect ? 'off' : undefined,
+      autoCapitalize: disableBrowserAutocorrect ? 'off' : undefined,
       spellCheck: spellcheck,
       onKeyDown: handleEditableElementKeyDown,
       onKeyUp: onKeyUp && (event => fireKeyboardEvent(onKeyUp, event)),
-      onInput: handleChangeEditableElement,
-      onBlur: () => {
-        // Save selection before blur for contentEditable
-        if (isMenusEnabled) {
-          const selection = window.getSelection();
-          if (selection && selection.rangeCount > 0) {
-            savedSelectionRef.current = selection.getRangeAt(0);
-          }
-        }
-        if (onBlur) {
-          fireNonCancelableEvent(onBlur);
-        }
-      },
+      onInput: handleEditableElementChange,
+      onBlur: handleEditableElementBlur,
       onFocus: onFocus && (() => fireNonCancelableEvent(onFocus)),
     };
 
-    if (disableBrowserAutocorrect) {
-      textareaAttributes.autoCorrect = 'off';
-      textareaAttributes.autoCapitalize = 'off';
-      editableElementAttributes.autoCorrect = 'off';
-      editableElementAttributes.autoCapitalize = 'off';
-    }
-
-    const action = (
+    const actionButton = (
       <div className={clsx(styles['primary-action'], testutilStyles['primary-action'])}>
         {customPrimaryAction ?? (
           <InternalButton
@@ -571,7 +521,14 @@ const InternalPromptInput = React.forwardRef(
             iconUrl={actionButtonIconUrl}
             iconSvg={actionButtonIconSvg}
             iconAlt={actionButtonIconAlt}
-            onClick={() => fireNonCancelableEvent(onAction, { value, tokens: [...(tokens ?? [])] })}
+            onClick={() => {
+              const plainText = isTokenMode
+                ? tokensToText
+                  ? tokensToText(tokens ?? [])
+                  : getPromptText(tokens ?? [])
+                : value;
+              fireNonCancelableEvent(onAction, { value: plainText, tokens: [...(tokens ?? [])] });
+            }}
             variant="icon"
           />
         )}
@@ -603,14 +560,21 @@ const InternalPromptInput = React.forwardRef(
             {secondaryContent}
           </div>
         )}
+
         <div className={styles['textarea-wrapper']}>
-          {tokens ? (
+          {isTokenMode ? (
             <>
-              {name && <input type="hidden" name={name} value={getPromptText(tokens)} />}
+              {name && (
+                <input
+                  type="hidden"
+                  name={name}
+                  value={tokensToText ? tokensToText(tokens ?? []) : getPromptText(tokens ?? [])}
+                />
+              )}
               <div
                 id={controlId}
                 ref={editableElementRef}
-                role={'textbox'}
+                role="textbox"
                 contentEditable={!disabled && !readOnly}
                 suppressContentEditableWarning={true}
                 {...editableElementAttributes}
@@ -626,8 +590,9 @@ const InternalPromptInput = React.forwardRef(
               id={controlId}
             />
           )}
-          {hasActionButton && !secondaryActions && action}
+          {hasActionButton && !secondaryActions && actionButton}
         </div>
+
         {secondaryActions && (
           <div
             className={clsx(styles['action-stripe'], {
@@ -647,9 +612,9 @@ const InternalPromptInput = React.forwardRef(
             </div>
             <div
               className={styles.buffer}
-              onClick={() => (isMenusEnabled ? editableElementRef.current?.focus() : textareaRef.current?.focus())}
+              onClick={() => (isTokenMode ? editableElementRef.current?.focus() : textareaRef.current?.focus())}
             />
-            {hasActionButton && action}
+            {hasActionButton && actionButton}
           </div>
         )}
       </div>

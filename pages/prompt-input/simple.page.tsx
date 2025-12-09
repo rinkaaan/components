@@ -16,7 +16,6 @@ import {
   SpaceBetween,
   SplitPanel,
 } from '~components';
-import getPromptText from '~components/prompt-input/utils';
 
 import AppContext, { AppContextType } from '../app/app-context';
 import labels from '../app-layout/utils/labels';
@@ -50,10 +49,11 @@ const placeholderText =
 export default function PromptInputPage() {
   const [textareaValue, setTextareaValue] = useState<string>('');
   const [tokens, setTokens] = useState<PromptInputProps.InputToken[]>([]);
+  const [mode, setMode] = useState<PromptInputProps.InputToken | undefined>();
+  const [plainTextValue, setPlainTextValue] = useState<string>('');
   const [valueInSplitPanel, setValueInSplitPanel] = useState<string>('');
   const [files, setFiles] = useState<File[]>([]);
   const [extractedText, setExtractedText] = useState<string>('');
-  const [lastCommandToken, setLastCommandToken] = useState<PromptInputProps.ReferenceInputToken | null>(null);
   const [selectionStart, setSelectionStart] = useState<string>('0');
   const [selectionEnd, setSelectionEnd] = useState<string>('0');
 
@@ -86,7 +86,7 @@ export default function PromptInputPage() {
   useEffect(() => {
     if (hasText) {
       if (enableReferences) {
-        setTokens([{ type: 'text', text: placeholderText }]);
+        setTokens([{ type: 'text', value: placeholderText }]);
       } else {
         setTextareaValue(placeholderText);
       }
@@ -94,18 +94,12 @@ export default function PromptInputPage() {
   }, [hasText, enableReferences]);
 
   useEffect(() => {
-    if (enableReferences) {
-      const plainText = getPromptText(tokens);
-      if (plainText !== placeholderText) {
-        setUrlParams({ hasText: false });
-      }
-    } else {
-      if (textareaValue !== placeholderText) {
-        setUrlParams({ hasText: false });
-      }
+    const currentValue = enableReferences ? plainTextValue : textareaValue;
+    if (currentValue !== placeholderText) {
+      setUrlParams({ hasText: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [textareaValue, tokens, enableReferences]);
+  }, [textareaValue, plainTextValue, enableReferences]);
 
   useEffect(() => {
     if (items.length === 0) {
@@ -251,6 +245,7 @@ export default function PromptInputPage() {
                   // Reset values when switching modes
                   setTextareaValue('');
                   setTokens([]);
+                  setPlainTextValue('');
                 }}
               >
                 Enable references (tokens mode - supports @mentions and /commands)
@@ -306,7 +301,7 @@ export default function PromptInputPage() {
             {extractedText && (
               <Box variant="awsui-key-label">
                 <div>
-                  <Box variant="awsui-key-label">Last extracted text (using getPromptText):</Box>
+                  <Box variant="awsui-key-label">Last submitted text:</Box>
                   <Box padding={{ top: 'xs' }}>
                     <code>{extractedText}</code>
                   </Box>
@@ -325,6 +320,17 @@ export default function PromptInputPage() {
               </Box>
             )}
 
+            {enableReferences && mode && (
+              <Box variant="awsui-key-label">
+                <div>
+                  <Box variant="awsui-key-label">Current mode:</Box>
+                  <Box padding={{ top: 'xs' }}>
+                    <code>{JSON.stringify(mode, null, 2)}</code>
+                  </Box>
+                </div>
+              </Box>
+            )}
+
             <form
               onSubmit={event => {
                 event.preventDefault();
@@ -337,15 +343,14 @@ export default function PromptInputPage() {
               <ColumnLayout columns={2}>
                 <FormField
                   errorText={
-                    ((enableReferences ? getPromptText(tokens, true).length : textareaValue.length) > MAX_CHARS ||
-                      isInvalid) &&
+                    ((enableReferences ? plainTextValue.length : textareaValue.length) > MAX_CHARS || isInvalid) &&
                     'The query has too many characters.'
                   }
                   warningText={hasWarning && 'This input has a warning'}
                   constraintText={
                     <>
                       This service is subject to some policy. Character count:{' '}
-                      {enableReferences ? getPromptText(tokens, true).length : textareaValue.length}/{MAX_CHARS}
+                      {enableReferences ? plainTextValue.length : textareaValue.length}/{MAX_CHARS}
                       {enableReferences && ' (Token mode: type @word or /command and press space)'}
                     </>
                   }
@@ -359,50 +364,36 @@ export default function PromptInputPage() {
                     actionButtonAriaLabel="Submit prompt"
                     value={enableReferences ? undefined : textareaValue}
                     tokens={enableReferences ? tokens : undefined}
+                    mode={enableReferences ? mode : undefined}
+                    onModeRemoved={() => {
+                      setMode(undefined);
+                    }}
                     onChange={(event: any) => {
                       if (enableReferences) {
-                        const newTokens = event.detail.tokens;
-                        setTokens(newTokens);
+                        setTokens(event.detail.tokens);
+                        setPlainTextValue(event.detail.value ?? '');
 
-                        // Check if user manually removed the command token
-                        const hasCommandToken = newTokens.some(
-                          (token: PromptInputProps.InputToken) =>
-                            token.type === 'reference' && token.id.startsWith('command:')
-                        );
-                        if (!hasCommandToken && lastCommandToken) {
-                          // User removed the command, clear it so it doesn't come back
-                          setLastCommandToken(null);
+                        // Update mode if it changed
+                        if (event.detail.mode !== undefined) {
+                          setMode(event.detail.mode);
                         }
                       } else {
-                        setTextareaValue(event.detail.value);
+                        setTextareaValue(event.detail.value ?? '');
                       }
                     }}
                     onAction={({ detail }) => {
-                      const plainText = enableReferences ? getPromptText(detail.tokens ?? []) : detail.value;
-
-                      setExtractedText(plainText ?? '');
+                      setExtractedText(detail.value ?? '');
 
                       if (enableReferences) {
-                        // Find command token in submitted tokens
-                        const commandToken = detail.tokens?.find(
-                          (token: PromptInputProps.InputToken) =>
-                            token.type === 'reference' && token.id.startsWith('command:')
-                        ) as PromptInputProps.ReferenceInputToken | undefined;
-
-                        if (commandToken) {
-                          // Save command token and restore it with a space after clearing
-                          setLastCommandToken(commandToken);
-                          setTokens([commandToken, { type: 'text', text: ' ' }]);
-                        } else {
-                          // No command token, clear everything
-                          setTokens([]);
-                        }
+                        // Clear tokens after submission, but keep the mode
+                        setTokens([]);
+                        setPlainTextValue('');
                       } else {
                         setTextareaValue('');
                       }
 
                       window.alert(
-                        `Submitted:\n\nPlain text: ${plainText}\n\n${
+                        `Submitted:\n\nPlain text: ${detail.value ?? ''}\n\n${
                           enableReferences ? `Tokens: ${JSON.stringify(detail.tokens, null, 2)}` : ''
                         }`
                       );
@@ -413,9 +404,7 @@ export default function PromptInputPage() {
                     readOnly={isReadOnly}
                     invalid={
                       isInvalid ||
-                      (enableReferences
-                        ? getPromptText(tokens, true).length > MAX_CHARS
-                        : textareaValue.length > MAX_CHARS)
+                      (enableReferences ? plainTextValue.length > MAX_CHARS : textareaValue.length > MAX_CHARS)
                     }
                     warning={hasWarning}
                     ref={ref}
