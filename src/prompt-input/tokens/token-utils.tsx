@@ -3,17 +3,16 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 
-import Token from '../token/internal';
-import { PromptInputProps } from './interfaces';
+import Token from '../../token/internal';
+import { PromptInputProps } from '../interfaces';
+
+import styles from '../styles.css.js';
 
 const TOKEN_DATA_PREFIX = 'data-token-';
 const TOKEN_TYPE_ATTRIBUTE = `${TOKEN_DATA_PREFIX}type`;
 
 /**
  * Creates a DOM element for a token with data attributes.
- * @param type - The token type identifier
- * @param attributes - Key-value pairs to be set as data-token-* attributes
- * @returns A configured span element ready for token rendering
  */
 function createTokenContainerElement(type: string, attributes: Record<string, string>): HTMLElement {
   const container = document.createElement('span');
@@ -43,19 +42,8 @@ const tokenRenderers: Record<
   reference: (token, target, containers) => {
     if (token.type === 'reference') {
       const container = createTokenContainerElement('reference', {
-        id: token.id || '',
-        value: token.value || '',
-      });
-      target.appendChild(container);
-      containers.add(container);
-      ReactDOM.render(<Token key={token.id} variant="inline" label={token.label} value={token.value} />, container);
-    }
-  },
-  mode: (token, target, containers) => {
-    if (token.type === 'mode') {
-      const container = createTokenContainerElement('mode', {
-        id: token.id || '',
-        value: token.value || '',
+        id: token.id,
+        value: token.value,
       });
       target.appendChild(container);
       containers.add(container);
@@ -65,9 +53,23 @@ const tokenRenderers: Record<
 };
 
 /**
+ * Renders a mode token into a DOM element.
+ */
+function renderModeToken(mode: PromptInputProps.ModeToken, target: HTMLElement, containers: Set<HTMLElement>): void {
+  const container = createTokenContainerElement('mode', {
+    id: mode.id,
+    value: mode.value,
+  });
+  target.appendChild(container);
+  containers.add(container);
+  ReactDOM.render(
+    <Token key={mode.id} variant="inline" label={mode.label} value={mode.value} className={styles['mode-token']} />,
+    container
+  );
+}
+
+/**
  * Cleans up React components and DOM content from the target element.
- * @param targetElement - The element to clean
- * @param reactContainers - Set of React container elements to unmount
  */
 function cleanupDOM(targetElement: HTMLElement, reactContainers: Set<HTMLElement>): void {
   reactContainers.forEach(container => {
@@ -84,7 +86,6 @@ function cleanupDOM(targetElement: HTMLElement, reactContainers: Set<HTMLElement
 /**
  * Ensures the contentEditable element can receive cursor at the end.
  * Adds an empty text node if the last child is an element node.
- * @param targetElement - The element to ensure cursor placement
  */
 function ensureCursorPlacement(targetElement: HTMLElement): void {
   if (targetElement.lastChild?.nodeType === Node.ELEMENT_NODE) {
@@ -95,13 +96,11 @@ function ensureCursorPlacement(targetElement: HTMLElement): void {
 /**
  * Renders an array of tokens into a contentEditable element.
  * Handles both text tokens (as text nodes) and reference tokens (as React components).
- * @param tokens - Array of tokens to render
- * @param targetElement - The contentEditable element to render into
- * @param reactContainers - Set to track React container elements for cleanup
- * @throws {Error} If targetElement is not a valid HTMLElement
+ * Mode token is rendered separately at the beginning if provided.
  */
 export function renderTokensToDOM(
   tokens: readonly PromptInputProps.InputToken[],
+  mode: PromptInputProps.ModeToken | undefined,
   targetElement: HTMLElement,
   reactContainers: Set<HTMLElement>
 ): void {
@@ -111,6 +110,12 @@ export function renderTokensToDOM(
 
   cleanupDOM(targetElement, reactContainers);
 
+  // Render mode token first if present
+  if (mode) {
+    renderModeToken(mode, targetElement, reactContainers);
+  }
+
+  // Render regular tokens
   tokens.forEach(token => {
     const renderer = tokenRenderers[token.type];
     if (renderer) {
@@ -125,8 +130,6 @@ export function renderTokensToDOM(
 
 /**
  * Extracts all data-token-* attributes from an element.
- * @param element - The element to extract attributes from
- * @returns Object mapping attribute keys to values (without the data-token- prefix)
  */
 function extractTokenData(element: HTMLElement): Record<string, string> {
   return Array.from(element.attributes)
@@ -158,24 +161,11 @@ const tokenExtractors: Record<
       value: data.value || element.textContent || '',
     };
   },
-  mode: (element, flushText) => {
-    flushText();
-    const data = extractTokenData(element);
-    return {
-      type: 'mode',
-      id: data.id || '',
-      label: element.textContent || '',
-      value: data.value || '',
-    };
-  },
 };
 
 /**
  * Extracts an array of tokens from a contentEditable DOM element.
  * Converts text nodes to TextInputToken and token elements to their respective types.
- * @param element - The contentEditable element to extract tokens from
- * @returns Array of extracted tokens
- * @throws {Error} If element is not a valid HTMLElement
  */
 export function domToTokenArray(element: HTMLElement): PromptInputProps.InputToken[] {
   if (!element || !(element instanceof HTMLElement)) {
@@ -199,7 +189,10 @@ export function domToTokenArray(element: HTMLElement): PromptInputProps.InputTok
       const el = node as HTMLElement;
       const tokenType = el.getAttribute(TOKEN_TYPE_ATTRIBUTE);
 
-      if (tokenType && tokenExtractors[tokenType]) {
+      if (tokenType === 'mode') {
+        // Skip mode tokens - they're handled separately via the mode prop
+        flushTextBuffer();
+      } else if (tokenType && tokenExtractors[tokenType]) {
         const token = tokenExtractors[tokenType](el, flushTextBuffer);
         if (token) {
           tokens.push(token);
@@ -217,22 +210,6 @@ export function domToTokenArray(element: HTMLElement): PromptInputProps.InputTok
   return tokens;
 }
 
-export function getPromptText(tokens: readonly PromptInputProps.InputToken[], labelsOnly = false): string {
-  if (tokens.length === 0) {
-    return '';
-  }
-
-  return tokens
-    .map(token => {
-      if (token.type === 'text') {
-        return token.value || '';
-      } else if (token.type === 'reference') {
-        return labelsOnly ? token.label || '' : token.value || '';
-      } else if (token.type === 'mode') {
-        // Mode tokens don't contribute to the text value
-        return '';
-      }
-      return '';
-    })
-    .join('');
+export function getPromptText(tokens: readonly PromptInputProps.InputToken[]): string {
+  return tokens.map(token => token.value).join('');
 }

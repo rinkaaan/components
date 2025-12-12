@@ -10,7 +10,7 @@ import InternalPromptInput from './internal';
 
 export { PromptInputProps };
 
-const PromptInput = React.forwardRef(
+const PromptInput = React.forwardRef<PromptInputProps.Ref | HTMLTextAreaElement, PromptInputProps>(
   (
     {
       autoFocus,
@@ -22,8 +22,8 @@ const PromptInput = React.forwardRef(
       minRows = 1,
       maxRows = 3,
       ...props
-    }: PromptInputProps,
-    ref: React.Ref<PromptInputProps.Ref>
+    },
+    ref
   ) => {
     const baseComponentProps = useBaseComponent('PromptInput', {
       props: {

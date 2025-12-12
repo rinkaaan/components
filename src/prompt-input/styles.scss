@@ -220,6 +220,11 @@ $invalid-border-offset: constants.$invalid-control-left-padding;
   }
 }
 
+.editable-wrapper {
+  flex: 1;
+  min-inline-size: 0;
+}
+
 .primary-action {
   align-self: flex-end;
   flex-shrink: 0;
@@ -285,4 +290,9 @@ $invalid-border-offset: constants.$invalid-control-left-padding;
   flex: 1;
   align-self: stretch;
   cursor: text;
+}
+
+// Mode token spacing
+.mode-token {
+  margin-inline-end: awsui.$space-xxs;
 }

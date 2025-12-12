@@ -4,19 +4,9 @@ import React from 'react';
 
 import { AutosuggestProps } from '../autosuggest/interfaces';
 import { IconProps } from '../icon/interfaces';
-import {
-  BaseInputProps,
-  InputAutoComplete,
-  InputAutoCorrect,
-  InputKeyEvents,
-  InputSpellcheck,
-} from '../input/interfaces';
+import { BaseInputProps, InputAutoCorrect, InputKeyEvents, InputSpellcheck } from '../input/interfaces';
 import { BaseComponentProps } from '../internal/base-component';
-import {
-  BaseDropdownHostProps,
-  OptionsFilteringType,
-  OptionsLoadItemsDetail,
-} from '../internal/components/dropdown/interfaces';
+import { BaseDropdownHostProps, OptionsFilteringType } from '../internal/components/dropdown/interfaces';
 import { DropdownStatusProps } from '../internal/components/dropdown-status';
 import { OptionDefinition } from '../internal/components/option/interfaces';
 import { FormFieldValidationControlProps } from '../internal/context/form-field-context';
@@ -27,10 +17,9 @@ import { BaseKeyDetail, NonCancelableEventHandler } from '../internal/events';
 import { NativeAttributes } from '../internal/utils/with-native-attributes';
 
 export interface PromptInputProps
-  extends Omit<BaseInputProps, 'nativeInputAttributes' | 'name' | 'value' | 'onChange'>,
+  extends Omit<BaseInputProps, 'nativeInputAttributes' | 'name' | 'value' | 'onChange' | 'ariaLabel'>,
     InputKeyEvents,
     InputAutoCorrect,
-    InputAutoComplete,
     InputSpellcheck,
     BaseComponentProps,
     FormFieldValidationControlProps {
@@ -43,9 +32,22 @@ export interface PromptInputProps
   name?: string;
 
   /**
-   * Specifies the content of the prompt input, not in use if `tokens` is defined.
+   * Specifies whether to enable a browser's autocomplete functionality for this input.
+   * In some cases it might be appropriate to disable autocomplete (for example, for security-sensitive fields).
+   * To use it correctly, set the `name` property.
+   *
+   * You can either provide a boolean value to set the property to "on" or "off", or specify a string value
+   * for the [autocomplete](https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete) attribute.
+   *
+   * Note: When `menus` is defined, autocomplete will not function.
    */
-  value?: string;
+  autoComplete?: boolean | string;
+
+  /**
+   * Specifies the content of the prompt input.
+   * When `tokens` is defined, this represents the plain text equivalent of the tokens.
+   */
+  value: string;
 
   /**
    * Specifies the content of the prompt input when using token mode.
@@ -53,28 +55,27 @@ export interface PromptInputProps
    * All tokens use the same unified structure with a `value` property:
    * - Text tokens: `value` contains the text content
    * - Reference tokens: `value` contains the reference value, `label` for display (e.g., '@john')
-   * - Mode tokens: Use the `mode` prop instead of including in this array
-   *
-   * When defined, `autocomplete` will no longer function.
    */
   tokens?: readonly PromptInputProps.InputToken[];
 
   /**
    * Specifies the active mode (e.g., /dev, /creative).
-   * Set `type` to `mode`.
    */
-  mode?: PromptInputProps.InputToken;
+  mode?: PromptInputProps.ModeToken;
 
   /**
    * Called when the user removes the active mode.
    */
-  onModeRemoved?: NonCancelableEventHandler<PromptInputProps.ModeChangeDetail>;
+  onModeRemoved?: NonCancelableEventHandler<null>;
 
   /**
    * Custom function to transform tokens into plain text for the `value` field in `onChange` and `onAction` events
    * and for the hidden input when `name` is specified.
    *
-   * If not provided, the default implementation concatenates the `value` property from all tokens.
+   * If not provided, the default implementation is:
+   * ```
+   * tokens.map(token => token.value).join('');
+   * ```
    *
    * Use this to customize serialization, for example:
    * - Using `label` instead of `value` for reference tokens
@@ -84,17 +85,17 @@ export interface PromptInputProps
 
   /**
    * Called whenever a user changes the input value (by typing or pasting).
-   * The event `detail` contains the current value as a React.ReactNode.
+   * The event `detail` contains the current value as a string and an array of tokens.
    *
-   * When `tokens` is defined this will return `undefined` for `value` and an array of `tokens` representing the current content in the input.
+   * When `menus` is defined, the `value` is derived from `tokensToText(tokens)` if provided, otherwise from the default token-to-text conversion.
    */
   onChange?: NonCancelableEventHandler<PromptInputProps.ChangeDetail>;
 
   /**
    * Called whenever a user clicks the action button or presses the "Enter" key.
-   * The event `detail` contains the current value of the field.
+   * The event `detail` contains the current value as a string and an array of tokens.
    *
-   * When `tokens` is defined this will return `undefined` for `value` and an array of `tokens` representing the current content in the input.
+   * When `menus` is defined, the `value` is derived from `tokensToText(tokens)` if provided, otherwise from the default token-to-text conversion.
    */
   onAction?: NonCancelableEventHandler<PromptInputProps.ActionDetail>;
 
@@ -140,8 +141,16 @@ export interface PromptInputProps
   actionButtonIconAlt?: string;
 
   /**
+   * Adds an aria-label to the input element.
+   * @i18n
+   * @deprecated Use `i18nStrings.ariaLabel` instead.
+   */
+  ariaLabel?: string;
+
+  /**
    * Adds an aria-label to the action button.
    * @i18n
+   * @deprecated Use `i18nStrings.actionButtonAriaLabel` instead.
    */
   actionButtonAriaLabel?: string;
 
@@ -197,12 +206,12 @@ export interface PromptInputProps
   menus?: PromptInputProps.MenuDefinition[];
 
   /**
-   * Called whenever a user selects an option in the menu.
+   * Called whenever a user selects an option in a menu.
    */
-  onMenuSelect?: NonCancelableEventHandler<PromptInputProps.MenuSelectDetail>;
+  onMenuItemSelect?: NonCancelableEventHandler<PromptInputProps.MenuItemSelectDetail>;
 
   /**
-   * Use this event to implement the asynchronous behavior for the menu.
+   * Use this event to implement the asynchronous behavior for menus.
    *
    * The event is called in the following situations:
    * - The user scrolls to the end of the list of options, if `statusType` is set to `pending`.
@@ -211,6 +220,7 @@ export interface PromptInputProps
    * - The menu is opened.
    *
    * The detail object contains the following properties:
+   * - `menuId` - The ID of the menu that triggered the event.
    * - `filteringText` - The value that you need to use to fetch options.
    * - `firstPage` - Indicates that you should fetch the first page of options that match the `filteringText`.
    * - `samePage` - Indicates that you should fetch the same page that you have previously fetched (for example, when the user clicks on the recovery button).
@@ -218,18 +228,37 @@ export interface PromptInputProps
   onMenuLoadItems?: NonCancelableEventHandler<PromptInputProps.MenuLoadItemsDetail>;
 
   /**
-   * Provides a text alternative for the error icon in the error message in menus.
-   * @i18n
+   * Called when the user scrolls to the end of the options list in a menu and more items are available.
+   * Use this to load additional pages of options for pagination.
+   *
+   * The detail object contains the `menuId` of the menu that triggered the event.
    */
-  menuErrorIconAriaLabel?: string;
+  onMenuLoadMoreItems?: NonCancelableEventHandler<PromptInputProps.MenuLoadMoreItemsDetail>;
 
   /**
-   * Specifies the localized string that describes an option as being selected.
-   * This is required to provide a good screen reader experience. For more information, see the
-   * [accessibility guidelines](/components/prompt-input/?tabId=usage#accessibility-guidelines).
+   * Called when the user types to filter options in manual filtering mode for a menu.
+   * Use this to filter the options based on the filtering text.
+   *
+   * The detail object contains:
+   * - `menuId` - The ID of the menu that triggered the event.
+   * - `filteringText` - The text to use for filtering options.
+   */
+  onMenuFilter?: NonCancelableEventHandler<PromptInputProps.MenuFilterDetail>;
+
+  /**
+   * An object containing all the localized strings required by the component.
+   *
+   * - `ariaLabel` (string) - Adds an aria-label to the input element.
+   * - `actionButtonAriaLabel` (string) - Adds an aria-label to the action button.
+   * - `menuErrorIconAriaLabel` (string) - Provides a text alternative for the error icon in the error message in menus.
+   * - `menuRecoveryText` (string) - Specifies the text for the recovery button in menus. The text is displayed next to the error text.
+   * - `menuLoadingText` (string) - Specifies the text to display when menus are in a loading state.
+   * - `menuFinishedText` (string) - Specifies the text to display when menus have finished loading all items.
+   * - `menuErrorText` (string) - Specifies the text to display when menus encounter an error while loading.
+   * - `selectedMenuItemAriaLabel` (string) - Specifies the localized string that describes an option as being selected.
    * @i18n
    */
-  selectedMenuItemAriaLabel?: string;
+  i18nStrings?: PromptInputProps.I18nStrings;
 
   /**
    * Overrides the element that is announced to screen readers in menus
@@ -243,6 +272,19 @@ export interface PromptInputProps
    * [accessibility guidelines](/components/prompt-input/?tabId=usage#accessibility-guidelines).
    */
   renderHighlightedMenuItemAriaLive?: AutosuggestProps.ContainingOptionAndGroupString;
+
+  /**
+   * By default, the menu height is constrained to fit inside the height of its next scrollable container element.
+   * Enabling this property will allow the menu to extend beyond that container by using fixed positioning and
+   * [React Portals](https://reactjs.org/docs/portals.html).
+   *
+   * Set this property if the menu would otherwise be constrained by a scrollable container,
+   * for example inside table and split view layouts.
+   *
+   * We recommend you use discretion, and don't enable this property unless necessary
+   * because fixed positioning results in a slight, visible lag when scrolling complex pages.
+   */
+  expandMenusToViewport?: boolean;
 
   /**
    * Attributes to add to the native `textarea` element.
@@ -266,43 +308,66 @@ export interface PromptInputProps
 export namespace PromptInputProps {
   export type KeyDetail = BaseKeyDetail;
 
-  export interface InputToken {
-    type: 'text' | 'reference' | 'mode';
-    id?: string;
-    label?: string;
-    value?: string;
+  export interface I18nStrings {
+    ariaLabel?: string;
+    actionButtonAriaLabel?: string;
+    menuErrorIconAriaLabel?: string;
+    menuRecoveryText?: string;
+    menuLoadingText?: string;
+    menuFinishedText?: string;
+    menuErrorText?: string;
+    selectedMenuItemAriaLabel?: string;
   }
 
+  export interface TextToken {
+    type: 'text';
+    value: string;
+  }
+
+  export interface ReferenceToken {
+    type: 'reference';
+    id: string;
+    label: string;
+    value: string;
+  }
+
+  export type ModeToken = Omit<ReferenceToken, 'type'>;
+
+  export type InputToken = TextToken | ReferenceToken;
+
   export interface ChangeDetail {
-    value?: string;
-    tokens?: InputToken[];
-    /**
-     * @experimental Prototype feature - communicates mode detection.
-     * Will be replaced by menu system in final implementation.
-     */
-    mode?: InputToken;
+    value: string;
+    tokens: InputToken[];
   }
 
   export interface ActionDetail {
-    value?: string;
-    tokens?: InputToken[];
+    value: string;
+    tokens: InputToken[];
   }
 
-  export interface MenuSelectDetail {
+  export interface MenuItemSelectDetail {
     menuId: string;
     option: OptionDefinition;
   }
 
-  export interface MenuLoadItemsDetail extends OptionsLoadItemsDetail {
+  export interface MenuLoadItemsDetail {
+    menuId: string;
+    filteringText: string;
+    firstPage: boolean;
+    samePage: boolean;
+  }
+
+  export interface MenuLoadMoreItemsDetail {
     menuId: string;
   }
 
-  export interface ModeChangeDetail {
-    mode?: InputToken;
+  export interface MenuFilterDetail {
+    menuId: string;
+    filteringText: string;
   }
 
   export interface MenuDefinition
-    extends Omit<DropdownStatusProps, 'onLoadItems' | 'errorIconAriaLabel' | 'recoveryText'>,
+    extends Pick<DropdownStatusProps, 'empty' | 'statusType'>,
       Pick<BaseDropdownHostProps, 'virtualScroll'> {
     /**
      * The unique identifier for this menu.
@@ -316,11 +381,14 @@ export namespace PromptInputProps {
 
     /**
      * Set `useAtStart=true` for menus where a trigger should only be detected at the start of input.
+     * Set this for menus designated to modes or actions.
+     *
+     * Menus with `useAtStart=true` create tokens with `type='mode'`.
      */
     useAtStart?: boolean;
 
     /**
-     * Specifies an array of options that are displayed to the user as a dropdown list.
+     * Specifies an array of options that are displayed to the user as a list.
      * The options can be grouped using `OptionGroup` objects.
      *
      * #### Option
@@ -356,8 +424,8 @@ export namespace PromptInputProps {
     /**
      * Determines how filtering is applied to the list of `options`:
      *
-     * * `auto` - The component will automatically filter options based on user input.
-     * * `manual` - You will set up `onChange` or `onMenuLoadItems` event listeners and filter options on your side or request
+     * - `auto` - The component will automatically filter options based on user input.
+     * - `manual` - You will set up `onMenuFilter` event listeners and filter options on your side or request
      * them from server.
      *
      * By default the component will filter the provided `options` based on the value of the filtering input field.
@@ -365,19 +433,12 @@ export namespace PromptInputProps {
      * are displayed in the list of options.
      *
      * If you set this property to `manual`, this default filtering mechanism is disabled and all provided `options` are
-     * displayed in the dropdown list. In that case make sure that you use the `onChange` or `onMenuLoadItems` events in order
+     * displayed in the menu. In that case make sure that you use the `onMenuFilter` event in order
      * to set the `options` property to the options that are relevant for the user, given the filtering input value.
      *
      * Note: Manual filtering doesn't disable match highlighting.
      **/
     filteringType?: Exclude<OptionsFilteringType, 'none'>;
-
-    /**
-     * Specifies the text for the recovery button. The text is displayed next to the error text.
-     * Use the `onMenuLoadItems` event to perform a recovery action (for example, retrying the request).
-     * @i18n
-     */
-    recoveryText?: string;
   }
 
   export interface Ref {
@@ -399,6 +460,12 @@ export namespace PromptInputProps {
      * common pitfalls: https://stackoverflow.com/questions/60129605/is-javascripts-setselectionrange-incompatible-with-react-hooks
      */
     setSelectionRange(start: number | null, end: number | null, direction?: 'forward' | 'backward' | 'none'): void;
+
+    /**
+     * Inserts text at the current cursor position (or at a specified position).
+     * This properly triggers keyboard and input events, including menu detection when `menus` is defined.
+     */
+    insertText(text: string, position?: number): void;
   }
 
   export interface Style {
