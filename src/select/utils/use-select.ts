@@ -305,9 +305,9 @@ export function useSelect({
 
   const prevOpen = usePrevious<boolean>(isOpen);
   useEffect(() => {
-    // highlight the first selected option, when opening the Select component without filter input
+    // highlight the first selected option and scroll into view
     // keep the focus in the filter input when opening, so that screenreader can recognize the combobox
-    if (isOpen && !prevOpen && options.length > 0 && !hasFilter) {
+    if (isOpen && !prevOpen && options.length > 0) {
       if (openedWithKeyboard) {
         if (__selectedOptions[0]) {
           highlightOptionWithKeyboard(__selectedOptions[0]);
@@ -334,7 +334,6 @@ export function useSelect({
     openedWithKeyboard,
     options,
     prevOpen,
-    hasFilter,
   ]);
 
   useEffect(() => {
