@@ -21,6 +21,7 @@ import { usePrevious } from '../../internal/hooks/use-previous';
 import { FilterProps } from '../parts/filter';
 import { ItemProps } from '../parts/item';
 import { connectOptionsByValue } from './connect-options';
+import scrollToIndex from './scroll-to-index';
 
 export type MenuProps = Omit<OptionsListProps, 'children'> & { ref: React.RefObject<HTMLDivElement> };
 export type GetOptionProps = (option: DropdownOption, index: number) => ItemProps;
@@ -305,24 +306,33 @@ export function useSelect({
 
   const prevOpen = usePrevious<boolean>(isOpen);
   useEffect(() => {
-    // highlight the first selected option, when opening the Select component without filter input
-    // keep the focus in the filter input when opening, so that screenreader can recognize the combobox
-    if (isOpen && !prevOpen && options.length > 0 && !hasFilter) {
-      if (openedWithKeyboard) {
-        if (__selectedOptions[0]) {
-          highlightOptionWithKeyboard(__selectedOptions[0]);
-        } else {
-          goHomeWithKeyboard();
-        }
-      } else {
-        if (!__selectedOptions[0] || !options.includes(__selectedOptions[0])) {
-          highlightFirstOptionWithMouse();
-        } else {
-          const highlightedIndex = options.indexOf(__selectedOptions[0]);
-          setHighlightedIndexWithMouse(highlightedIndex, true);
-        }
-      }
+    if (!isOpen || prevOpen || options.length === 0) {
+      return;
     }
+
+    const selectedOption = __selectedOptions[0];
+    const hasSelectedOption = selectedOption && options.includes(selectedOption);
+    const selectedIndex = hasSelectedOption ? options.indexOf(selectedOption) : -1;
+
+    // With filter: scroll selected option into view without highlighting to keep focus on filter input for accessibility
+    if (hasFilter && hasSelectedOption && menuRef.current) {
+      scrollToIndex({ index: selectedIndex, menuEl: menuRef.current });
+      return;
+    }
+
+    // With filter but no selected option: do nothing, keep focus on filter
+    if (hasFilter) {
+      return;
+    }
+
+    // Without filter, opened with keyboard: highlight selected option or go to first option
+    if (openedWithKeyboard) {
+      hasSelectedOption ? highlightOptionWithKeyboard(selectedOption) : goHomeWithKeyboard();
+      return;
+    }
+
+    // Without filter, opened with mouse: highlight and focus selected option or first option
+    hasSelectedOption ? setHighlightedIndexWithMouse(selectedIndex, true) : highlightFirstOptionWithMouse();
   }, [
     isOpen,
     __selectedOptions,
@@ -335,6 +345,7 @@ export function useSelect({
     options,
     prevOpen,
     hasFilter,
+    menuRef,
   ]);
 
   useEffect(() => {

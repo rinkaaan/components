@@ -449,7 +449,7 @@ describe('useSelect', () => {
     });
   });
 
-  test('select with filter should open and NOT navigate to selected option', () => {
+  test('select with filter should open and NOT focus the selected option', () => {
     const hook = renderHook(useSelect, {
       initialProps: { ...initialProps, selectedOptions: [{ value: 'child1' }] },
     });
