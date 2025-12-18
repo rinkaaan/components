@@ -27,7 +27,7 @@ export default function () {
   const filterEnabled = urlParams.filterEnabled ?? true;
 
   const options = generateOptions(50);
-  const [selected, setSelected] = useState<SelectProps['selectedOption']>(options[25]);
+  const [selected, setSelected] = useState<SelectProps['selectedOption']>(options[49]);
 
   return (
     <>
