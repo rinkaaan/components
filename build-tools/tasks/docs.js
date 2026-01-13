@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 const path = require('path');
-const { writeComponentsDocumentation, writeTestUtilsDocumentation } = require('@cloudscape-design/documenter');
+const { writeComponentsDocumentation, writeTestUtilsDocumentation } = require('../../documenter');
 const workspace = require('../utils/workspace');
 
 module.exports = function docs() {
