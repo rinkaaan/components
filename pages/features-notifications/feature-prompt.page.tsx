@@ -2,14 +2,84 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useEffect, useRef } from 'react';
 
-import { AppLayout, Box, Button, Header, Icon, Link, SpaceBetween } from '~components';
+import { AppLayout, Badge, Box, Button, Header, Icon, Link, SpaceBetween } from '~components';
 import FeaturePrompt, { FeaturePromptProps } from '~components/internal/do-not-use/feature-prompt';
+import { registerFeatureNotifications } from '~components/internal/plugins/widget';
 import { mount, unmount } from '~mount';
 
 import { Breadcrumbs, Containers, Navigation, Tools } from '../app-layout/utils/content-blocks';
 import labels from '../app-layout/utils/labels';
 import * as toolsContent from '../app-layout/utils/tools-content';
 import ScreenshotArea from '../utils/screenshot-area';
+
+registerFeatureNotifications({
+  id: 'local-feature-notifications',
+  suppressFeaturePrompt: false,
+  featuresPageLink: '/new-amazing-features',
+  filterFeatures: () => true,
+  features: [
+    {
+      id: '1',
+      header: <Box fontWeight="bold">New feature, events with more resource tags</Box>,
+      content: (
+        <Box variant="p">
+          You can now enrich CloudTrail events with additional information by adding resources tags and IAM global keys
+          in CloudTrail lake.{' '}
+          <Link external={true} href="https://amazon.com">
+            Learn more
+          </Link>
+        </Box>
+      ),
+      contentCategory: (
+        <Box fontSize="body-s" color="text-label">
+          Event coverage
+        </Box>
+      ),
+      releaseDate: new Date('2025-11-01'),
+    },
+    {
+      id: '2',
+      header: (
+        <Box fontWeight="bold">Enhanced filtering options for CloudTrail events ingested into event data stores</Box>
+      ),
+      content: (
+        <>
+          <Box variant="p">
+            More enhanced filtering options provide tighter control over your AWS activity data, improving the
+            efficiency and precision of security, compliance, and operational investigations.{' '}
+            <Link external={true} href="https://amazon.com">
+              View user guide
+            </Link>
+          </Box>
+          <Box margin={{ top: 'xs' }}>
+            <Button>Create an Enhanced trail</Button>
+          </Box>
+        </>
+      ),
+      releaseDate: new Date('2025-07-28'),
+    },
+    {
+      id: '3',
+      header: <Box fontWeight="bold">Introducing Application Map</Box>,
+      content: (
+        <>
+          <Box variant="p">
+            Use application map to automatically discover and organize your services into groups based on your business
+            needs. Identify root cause faster instead of troubleshooting isolated symptoms with operational signals such
+            as SLOs, health indicators, and top insights in a contextual drawer. <Link href="#">Learn more</Link>
+          </Box>
+        </>
+      ),
+      contentCategory: <Badge>Operational investigations</Badge>,
+      releaseDate: new Date('2025-08-01'),
+    },
+  ],
+  mountItem: (container, data) => {
+    mount(data, container);
+
+    return () => unmount(container);
+  },
+});
 
 export default function () {
   const featurePromptRef = useRef<FeaturePromptProps.Ref>(null);
