@@ -14,7 +14,7 @@ import { OnChangeParams } from '../utils/use-drawers';
 import { FocusControlMultipleStates, FocusControlState } from '../utils/use-focus-control';
 import { SplitPanelFocusControlState } from '../utils/use-split-panel-focus-control';
 import { VerticalLayoutOutput } from './compute-layout';
-import { RenderLatestFeaturePrompt } from './state/use-feature-notifications';
+import { FeatureNotificationsProps } from './state/use-feature-notifications';
 
 export interface AppLayoutInternalProps extends AppLayoutPropsWithDefaults {
   navigationTriggerHide?: boolean;
@@ -107,7 +107,7 @@ export interface AppLayoutWidgetizedState extends AppLayoutInternals {
   bottomDrawersFocusControl: FocusControlState;
   onActiveBottomDrawerResize: ({ id, size }: { id: string; size: number }) => void;
   bottomDrawers: ReadonlyArray<InternalDrawer>;
-  renderLatestFeaturePrompt?: RenderLatestFeaturePrompt;
+  featureNotificationsProps?: FeatureNotificationsProps;
 }
 
 // New widget interface

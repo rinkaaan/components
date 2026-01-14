@@ -47,7 +47,7 @@ export const BeforeMainSlotImplementation = ({ toolbarProps, appLayoutState, app
     onActiveAiDrawerChange,
     activeAiDrawer,
     bottomDrawerReportedSize,
-    renderLatestFeaturePrompt,
+    featureNotificationsProps,
   } = appLayoutState.widgetizedState;
   const drawerExpandedMode = !!expandedDrawerId;
   const toolsOpen = !!activeDrawer;
@@ -60,7 +60,7 @@ export const BeforeMainSlotImplementation = ({ toolbarProps, appLayoutState, app
         <AppLayoutToolbar
           appLayoutInternals={appLayoutState.appLayoutInternals}
           toolbarProps={toolbarProps}
-          renderLatestFeaturePrompt={renderLatestFeaturePrompt}
+          featureNotificationsProps={featureNotificationsProps}
         />
       )}
       {aiDrawer && (

@@ -204,7 +204,7 @@ export const useAppLayout = (
   });
   const activeGlobalBottomDrawerId = activeBottomDrawer?.id ?? null;
 
-  const { renderLatestFeaturePrompt, featureNotificationsMessageHandler } = useFeatureNotifications({
+  const { featureNotificationsProps, featureNotificationsMessageHandler } = useFeatureNotifications({
     activeDrawersIds: [...activeGlobalDrawersIds, ...(activeDrawer ? [activeDrawer.id] : [])],
   });
 
@@ -629,7 +629,7 @@ export const useAppLayout = (
       onActiveBottomDrawerResize,
       bottomDrawers,
       bottomDrawersFocusControl,
-      renderLatestFeaturePrompt,
+      featureNotificationsProps,
     },
   };
 };

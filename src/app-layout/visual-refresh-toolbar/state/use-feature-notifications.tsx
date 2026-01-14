@@ -9,17 +9,15 @@ import RuntimeFeaturesNotificationDrawer, { RuntimeContentPart } from '../drawer
 interface UseFeatureNotificationsProps {
   activeDrawersIds: Array<string>;
 }
-export interface RenderLatestFeaturePromptProps {
+interface RenderLatestFeaturePromptProps {
   triggerRef: RefObject<HTMLElement>;
 }
-interface RenderLatestFeaturePromptReturns {
-  element: JSX.Element | null;
+export interface FeatureNotificationsProps {
+  renderLatestFeaturePrompt: RenderLatestFeaturePrompt;
   drawerId?: string | null;
 }
 
-export type RenderLatestFeaturePrompt = (
-  props: RenderLatestFeaturePromptProps
-) => RenderLatestFeaturePromptReturns | null;
+export type RenderLatestFeaturePrompt = (props: RenderLatestFeaturePromptProps) => JSX.Element | null;
 
 // TODO replace with a real continuum request
 const delay = () =>
@@ -115,40 +113,40 @@ export function useFeatureNotifications({ activeDrawersIds }: UseFeatureNotifica
     }
   }
 
-  function renderLatestFeaturePrompt({
-    triggerRef,
-  }: RenderLatestFeaturePromptProps): RenderLatestFeaturePromptReturns | null {
+  function renderLatestFeaturePrompt({ triggerRef }: RenderLatestFeaturePromptProps) {
     if (!(triggerRef && featureNotificationsData && latestFeature)) {
       return null;
     }
-    return {
-      element: (
-        <FeaturePrompt
-          ref={featurePromptRef}
-          onShow={() => {
-            triggerRef.current!.dataset!.awsuiSuppressTooltip = 'true';
-          }}
-          onDismiss={() => {
-            triggerRef.current!.dataset!.awsuiSuppressTooltip = 'false';
-            setFeaturePromptDismissed(true);
-          }}
-          header={
-            <RuntimeContentPart mountContent={featureNotificationsData?.mountItem} content={latestFeature.header} />
-          }
-          content={
-            <RuntimeContentPart mountContent={featureNotificationsData?.mountItem} content={latestFeature.content} />
-          }
-          trackKey={latestFeature.id}
-          position="left"
-          getTrack={() => triggerRef.current}
-        />
-      ),
-      drawerId: featureNotificationsData.id,
-    };
+    return (
+      <FeaturePrompt
+        ref={featurePromptRef}
+        onShow={() => {
+          triggerRef.current!.dataset!.awsuiSuppressTooltip = 'true';
+        }}
+        onDismiss={() => {
+          triggerRef.current!.dataset!.awsuiSuppressTooltip = 'false';
+          setFeaturePromptDismissed(true);
+        }}
+        header={
+          <RuntimeContentPart mountContent={featureNotificationsData?.mountItem} content={latestFeature.header} />
+        }
+        content={
+          <RuntimeContentPart mountContent={featureNotificationsData?.mountItem} content={latestFeature.content} />
+        }
+        trackKey={latestFeature.id}
+        position="left"
+        getTrack={() => triggerRef.current}
+      />
+    );
   }
 
-  return {
+  const featureNotificationsProps: FeatureNotificationsProps = {
     renderLatestFeaturePrompt,
+    drawerId: featureNotificationsData?.id,
+  };
+
+  return {
+    featureNotificationsProps,
     featureNotificationsMessageHandler,
   };
 }

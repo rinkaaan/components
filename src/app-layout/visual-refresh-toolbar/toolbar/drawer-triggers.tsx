@@ -12,7 +12,7 @@ import { AppLayoutProps, AppLayoutPropsWithDefaults } from '../../interfaces';
 import { OnChangeParams, TOOLS_DRAWER_ID } from '../../utils/use-drawers';
 import { Focusable, FocusControlMultipleStates } from '../../utils/use-focus-control';
 import { InternalDrawer } from '../interfaces';
-import { RenderLatestFeaturePrompt } from '../state/use-feature-notifications';
+import { FeatureNotificationsProps } from '../state/use-feature-notifications';
 import TriggerButton from './trigger-button';
 
 import splitPanelTestUtilStyles from '../../../split-panel/test-classes/styles.css.js';
@@ -52,7 +52,7 @@ interface DrawerTriggersProps {
   onSplitPanelToggle: (() => void) | undefined;
   disabled: boolean;
 
-  renderLatestFeaturePrompt?: RenderLatestFeaturePrompt;
+  featureNotificationsProps?: FeatureNotificationsProps;
 }
 
 export function DrawerTriggers({
@@ -77,7 +77,7 @@ export function DrawerTriggers({
   onActiveGlobalBottomDrawerChange,
   bottomDrawersFocusRef,
   bottomDrawers,
-  renderLatestFeaturePrompt,
+  featureNotificationsProps,
 }: DrawerTriggersProps) {
   const isMobile = useMobile();
   const hasMultipleTriggers = drawers.length > 1;
@@ -140,8 +140,6 @@ export function DrawerTriggers({
     }
   };
 
-  const latestFeaturePrompt = renderLatestFeaturePrompt?.({ triggerRef: featureNotificationTriggerRef });
-
   return (
     <aside
       className={styles[`drawers-${isMobile ? 'mobile' : 'desktop'}-triggers-container`]}
@@ -149,7 +147,7 @@ export function DrawerTriggers({
       ref={triggersContainerRef}
       role="region"
     >
-      {latestFeaturePrompt?.element}
+      {featureNotificationsProps?.renderLatestFeaturePrompt?.({ triggerRef: featureNotificationTriggerRef })}
       <div
         className={styles['drawers-trigger-content']}
         aria-label={ariaLabels?.drawers}
@@ -188,7 +186,7 @@ export function DrawerTriggers({
         {visibleItems.slice(0, globalDrawersStartIndex).map(item => {
           const isForPreviousActiveDrawer = previousActiveLocalDrawerId?.current === item.id;
           const selected = !expandedDrawerId && item.id === activeDrawerId;
-          const isFeatureNotificationsDrawer = latestFeaturePrompt?.drawerId === item.id;
+          const isFeatureNotificationsDrawer = featureNotificationsProps?.drawerId === item.id;
           return (
             <TriggerButton
               ariaLabel={item.ariaLabels?.triggerButton}
