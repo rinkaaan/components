@@ -154,6 +154,7 @@ Map {
         "toolbar": 0,
       },
     },
+    "renderLatestFeaturePrompt": [Function],
     "toolbarProps": {
       "activeDrawerId": null,
       "ariaLabels": {
@@ -1004,6 +1005,7 @@ Map {
         "toolbar": 0,
       },
     },
+    "renderLatestFeaturePrompt": [Function],
     "toolbarProps": {
       "activeDrawerId": null,
       "ariaLabels": {

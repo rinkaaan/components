@@ -12,11 +12,14 @@ interface UseFeatureNotificationsProps {
 export interface RenderLatestFeaturePromptProps {
   triggerRef: RefObject<HTMLElement>;
 }
-
-export type RenderLatestFeaturePrompt = (props: RenderLatestFeaturePromptProps) => {
+interface RenderLatestFeaturePromptReturns {
   element: JSX.Element | null;
-  drawerId: string;
-};
+  drawerId?: string | null;
+}
+
+export type RenderLatestFeaturePrompt = (
+  props: RenderLatestFeaturePromptProps
+) => RenderLatestFeaturePromptReturns | null;
 
 // TODO replace with a real continuum request
 const delay = () =>
@@ -54,7 +57,6 @@ export function useFeatureNotifications({ activeDrawersIds }: UseFeatureNotifica
       if (!featureNotificationsData.suppressFeaturePrompt && !featurePromptDismissed) {
         featurePromptRef.current?.show();
       }
-      // TODO
       // awsuiPlugins.appLayout.updateDrawer({ id, badge: true });
     });
   }, [featureNotificationsData, activeDrawersIds, markAllAsRead, featurePromptDismissed]);
@@ -113,7 +115,9 @@ export function useFeatureNotifications({ activeDrawersIds }: UseFeatureNotifica
     }
   }
 
-  function renderLatestFeaturePrompt({ triggerRef }: RenderLatestFeaturePromptProps) {
+  function renderLatestFeaturePrompt({
+    triggerRef,
+  }: RenderLatestFeaturePromptProps): RenderLatestFeaturePromptReturns | null {
     if (!(triggerRef && featureNotificationsData && latestFeature)) {
       return null;
     }
