@@ -63,15 +63,15 @@ export function useFeatureNotifications({ activeDrawersIds }: UseFeatureNotifica
     if (event.type === 'registerFeatureNotifications') {
       const payload = event.payload;
       setFeatureNotificationsData(payload);
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
       const features = payload.features
         .slice()
         .filter(
           payload.filterFeatures
             ? payload.filterFeatures
             : feature => {
-                return feature.releaseDate >= thirtyDaysAgo;
+                return feature.releaseDate >= ninetyDaysAgo;
               }
         )
         .sort((a, b) => b.releaseDate.getTime() - a.releaseDate.getTime());
