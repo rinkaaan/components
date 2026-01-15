@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from 'react';
 
 import { AppLayout, Badge, Box, Button, Header, Icon, Link, SpaceBetween } from '~components';
 import FeaturePrompt, { FeaturePromptProps } from '~components/internal/do-not-use/feature-prompt';
+import { setPersistenceFunctionsForTesting } from '~components/internal/persistence';
 import { registerFeatureNotifications } from '~components/internal/plugins/widget';
 import { mount, unmount } from '~mount';
 
@@ -11,6 +12,29 @@ import { Breadcrumbs, Containers, Navigation, Tools } from '../app-layout/utils/
 import labels from '../app-layout/utils/labels';
 import * as toolsContent from '../app-layout/utils/tools-content';
 import ScreenshotArea from '../utils/screenshot-area';
+
+const readFeaturesStorage: Record<string, Array<string>> = {
+  'feature-notifications': [],
+};
+
+setPersistenceFunctionsForTesting({
+  persistSeenFeatureNotifications: async function (persistenceConfig, value) {
+    const readFeatures = readFeaturesStorage[persistenceConfig.uniqueKey] ?? [];
+    const result = await new Promise<void>(resolve =>
+      setTimeout(() => {
+        readFeaturesStorage[persistenceConfig.uniqueKey] = [...readFeatures, ...value];
+        resolve();
+      }, 150)
+    );
+    return result;
+  },
+  retrieveSeenFeatureNotifications: async function (persistenceConfig) {
+    const result = await new Promise<Array<string>>(resolve =>
+      setTimeout(() => resolve(readFeaturesStorage[persistenceConfig.uniqueKey] ?? []), 150)
+    );
+    return result;
+  },
+});
 
 registerFeatureNotifications({
   id: 'local-feature-notifications',

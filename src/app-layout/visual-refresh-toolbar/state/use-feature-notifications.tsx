@@ -3,6 +3,7 @@
 import React, { RefObject, useEffect, useRef, useState } from 'react';
 
 import FeaturePrompt, { FeaturePromptProps } from '../../../internal/do-not-use/feature-prompt';
+import { persistSeenFeatureNotifications, retrieveSeenFeatureNotifications } from '../../../internal/persistence';
 import awsuiPlugins from '../../../internal/plugins';
 import { Feature, FeatureNotificationsPayload, WidgetMessage } from '../../../internal/plugins/widget/interfaces';
 import RuntimeFeaturesNotificationDrawer, { RuntimeContentPart } from '../drawer/feature-notifications-drawer-content';
@@ -16,16 +17,13 @@ export interface FeatureNotificationsProps {
   renderLatestFeaturePrompt: RenderLatestFeaturePrompt;
   drawerId?: string | null;
 }
-
 export type RenderLatestFeaturePrompt = (props: RenderLatestFeaturePromptProps) => JSX.Element | null;
 
-// TODO replace with a real continuum request
-const delay = () =>
-  new Promise(resolve => {
-    setTimeout(() => {
-      resolve(1);
-    }, 200);
-  });
+// TODO
+const persistenceConfig = {
+  uniqueKey: 'feature-notifications',
+  crossServicePersistence: false,
+};
 
 export function useFeatureNotifications({ activeDrawersIds }: UseFeatureNotificationsProps) {
   const [markAllAsRead, setMarkAllAsRead] = useState(false);
@@ -33,6 +31,7 @@ export function useFeatureNotifications({ activeDrawersIds }: UseFeatureNotifica
   const [featureNotificationsData, setFeatureNotificationsData] = useState<FeatureNotificationsPayload<unknown> | null>(
     null
   );
+  const [seenFeatureIds, setSeenFeatureIds] = useState<Set<string>>(new Set());
   const featurePromptRef = useRef<FeaturePromptProps.Ref>(null);
   let latestFeature: Feature<unknown> | null = null;
   if (featureNotificationsData) {
@@ -44,20 +43,33 @@ export function useFeatureNotifications({ activeDrawersIds }: UseFeatureNotifica
       return;
     }
     const id = featureNotificationsData.id;
-    if (activeDrawersIds.includes(id)) {
-      // TODO make a request to continuum and mark all notifications as read
-      awsuiPlugins.appLayout.updateDrawer({ id, badge: false });
-      setMarkAllAsRead(true);
+    if (activeDrawersIds.includes(id) && !markAllAsRead) {
+      const allFeaturesIds = [...seenFeatureIds, ...featureNotificationsData.features.map(feature => feature.id)];
+      const uniqueAllFeatureIds = [...new Set(allFeaturesIds)];
+      persistSeenFeatureNotifications(persistenceConfig, uniqueAllFeatureIds).then(() => {
+        awsuiPlugins.appLayout.updateDrawer({ id, badge: false });
+        setMarkAllAsRead(true);
+      });
       return;
     }
-    // call continuum to determine if all notifications were read, if not, show the badge and trigger the feature prompt
-    delay().then(() => {
-      if (!featureNotificationsData.suppressFeaturePrompt && !featurePromptDismissed) {
-        featurePromptRef.current?.show();
-      }
-      // awsuiPlugins.appLayout.updateDrawer({ id, badge: true });
-    });
-  }, [featureNotificationsData, activeDrawersIds, markAllAsRead, featurePromptDismissed]);
+
+    if (seenFeatureIds.size === 0) {
+      // call continuum to determine if all notifications were read, if not, show the badge and trigger the feature prompt
+      retrieveSeenFeatureNotifications(persistenceConfig).then(seenFeatureNotifications => {
+        const seenFeatureNotificationsSet = new Set(seenFeatureNotifications);
+        setSeenFeatureIds(seenFeatureNotificationsSet);
+        const hasUnseenFeatures = featureNotificationsData.features.some(
+          feature => !seenFeatureNotificationsSet.has(feature.id)
+        );
+        if (hasUnseenFeatures) {
+          if (!featureNotificationsData.suppressFeaturePrompt && !featurePromptDismissed) {
+            featurePromptRef.current?.show();
+          }
+          awsuiPlugins.appLayout.updateDrawer({ id, badge: true });
+        }
+      });
+    }
+  }, [featureNotificationsData, activeDrawersIds, markAllAsRead, featurePromptDismissed, seenFeatureIds]);
 
   function featureNotificationsMessageHandler(event: WidgetMessage) {
     if (event.type === 'registerFeatureNotifications') {

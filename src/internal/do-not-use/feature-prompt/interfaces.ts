@@ -81,4 +81,8 @@ export namespace FeaturePromptProps {
      */
     show(): void;
   }
+  export interface PersistenceConfig {
+    uniqueKey: string;
+    crossServicePersistence?: boolean;
+  }
 }
