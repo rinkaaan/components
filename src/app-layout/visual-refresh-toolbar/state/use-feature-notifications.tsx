@@ -33,10 +33,6 @@ export function useFeatureNotifications({ activeDrawersIds }: UseFeatureNotifica
   );
   const [seenFeatureIds, setSeenFeatureIds] = useState<Set<string>>(new Set());
   const featurePromptRef = useRef<FeaturePromptProps.Ref>(null);
-  let latestFeature: Feature<unknown> | null = null;
-  if (featureNotificationsData) {
-    latestFeature = featureNotificationsData.features![0];
-  }
 
   useEffect(() => {
     if (!featureNotificationsData || markAllAsRead) {
@@ -51,23 +47,6 @@ export function useFeatureNotifications({ activeDrawersIds }: UseFeatureNotifica
         setMarkAllAsRead(true);
       });
       return;
-    }
-
-    if (seenFeatureIds.size === 0) {
-      // call continuum to determine if all notifications were read, if not, show the badge and trigger the feature prompt
-      retrieveSeenFeatureNotifications(persistenceConfig).then(seenFeatureNotifications => {
-        const seenFeatureNotificationsSet = new Set(seenFeatureNotifications);
-        setSeenFeatureIds(seenFeatureNotificationsSet);
-        const hasUnseenFeatures = featureNotificationsData.features.some(
-          feature => !seenFeatureNotificationsSet.has(feature.id)
-        );
-        if (hasUnseenFeatures) {
-          if (!featureNotificationsData.suppressFeaturePrompt && !featurePromptDismissed) {
-            featurePromptRef.current?.show();
-          }
-          awsuiPlugins.appLayout.updateDrawer({ id, badge: true });
-        }
-      });
     }
   }, [featureNotificationsData, activeDrawersIds, markAllAsRead, featurePromptDismissed, seenFeatureIds]);
 
@@ -113,6 +92,18 @@ export function useFeatureNotifications({ activeDrawersIds }: UseFeatureNotifica
           />
         ),
       });
+
+      retrieveSeenFeatureNotifications(persistenceConfig).then(seenFeatureNotifications => {
+        const seenFeatureNotificationsSet = new Set(seenFeatureNotifications);
+        setSeenFeatureIds(seenFeatureNotificationsSet);
+        const hasUnseenFeatures = features.some(feature => !seenFeatureNotificationsSet.has(feature.id));
+        if (hasUnseenFeatures) {
+          if (!payload.suppressFeaturePrompt && !featurePromptDismissed) {
+            featurePromptRef.current?.show();
+          }
+          awsuiPlugins.appLayout.updateDrawer({ id: payload.id, badge: true });
+        }
+      });
       return;
     }
 
@@ -126,6 +117,10 @@ export function useFeatureNotifications({ activeDrawersIds }: UseFeatureNotifica
   }
 
   function renderLatestFeaturePrompt({ triggerRef }: RenderLatestFeaturePromptProps) {
+    let latestFeature: Feature<unknown> | null = null;
+    if (featureNotificationsData) {
+      latestFeature = featureNotificationsData.features![0];
+    }
     if (!(triggerRef && featureNotificationsData && latestFeature)) {
       return null;
     }

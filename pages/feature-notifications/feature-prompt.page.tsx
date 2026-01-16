@@ -3,6 +3,8 @@
 import React, { useEffect, useRef } from 'react';
 
 import { AppLayout, Badge, Box, Button, Header, Icon, Link, SpaceBetween } from '~components';
+import { I18nProvider } from '~components/i18n';
+import messages from '~components/i18n/messages/all.all';
 import FeaturePrompt, { FeaturePromptProps } from '~components/internal/do-not-use/feature-prompt';
 import { setPersistenceFunctionsForTesting } from '~components/internal/persistence';
 import { registerFeatureNotifications } from '~components/internal/plugins/widget';
@@ -128,53 +130,55 @@ export default function () {
 
   return (
     <ScreenshotArea gutters={false}>
-      <FeaturePrompt
-        ref={featurePromptRef}
-        onDismiss={() => {
-          // handle focus behavior here
-        }}
-        position="bottom"
-        header={
-          <Box fontWeight="bold">
-            <Icon name="gen-ai" /> Our AI buddy is smarter than ever
-          </Box>
-        }
-        content={
-          <Box>
-            It supports filtering with plain language, reports generation with .pdf, and so much more! See{' '}
-            <Link href="#">top 10 things it can do for you</Link>.
-          </Box>
-        }
-        getTrack={() => document.querySelector('#settings-icon')}
-        trackKey="settings-icon"
-      />
-      <AppLayout
-        ariaLabels={labels}
-        analyticsMetadata={{
-          flowType: 'home',
-          instanceIdentifier: 'demo-page',
-        }}
-        breadcrumbs={<Breadcrumbs />}
-        navigation={<Navigation />}
-        tools={<Tools>{toolsContent.long}</Tools>}
-        content={
-          <>
-            <div style={{ marginBlockEnd: '1rem' }}>
-              <Header variant="h1" description="Basic demo">
-                Demo page
-              </Header>
-            </div>
-            <Button
-              onClick={() => {
-                featurePromptRef.current?.show();
-              }}
-            >
-              show a feature prompt
-            </Button>
-            <Containers />
-          </>
-        }
-      />
+      <I18nProvider messages={[messages]} locale="en">
+        <FeaturePrompt
+          ref={featurePromptRef}
+          onDismiss={() => {
+            // handle focus behavior here
+          }}
+          position="bottom"
+          header={
+            <Box fontWeight="bold">
+              <Icon name="gen-ai" /> Our AI buddy is smarter than ever
+            </Box>
+          }
+          content={
+            <Box>
+              It supports filtering with plain language, reports generation with .pdf, and so much more! See{' '}
+              <Link href="#">top 10 things it can do for you</Link>.
+            </Box>
+          }
+          getTrack={() => document.querySelector('#settings-icon')}
+          trackKey="settings-icon"
+        />
+        <AppLayout
+          ariaLabels={labels}
+          analyticsMetadata={{
+            flowType: 'home',
+            instanceIdentifier: 'demo-page',
+          }}
+          breadcrumbs={<Breadcrumbs />}
+          navigation={<Navigation />}
+          tools={<Tools>{toolsContent.long}</Tools>}
+          content={
+            <>
+              <div style={{ marginBlockEnd: '1rem' }}>
+                <Header variant="h1" description="Basic demo">
+                  Demo page
+                </Header>
+              </div>
+              <Button
+                onClick={() => {
+                  featurePromptRef.current?.show();
+                }}
+              >
+                show a feature prompt
+              </Button>
+              <Containers />
+            </>
+          }
+        />
+      </I18nProvider>
     </ScreenshotArea>
   );
 }

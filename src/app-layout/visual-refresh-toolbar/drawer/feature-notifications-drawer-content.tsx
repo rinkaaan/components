@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from 'react';
 
 import Box from '../../../box/internal';
 import { InternalDrawer } from '../../../drawer/internal';
+import { useInternalI18n } from '../../../i18n/context';
 import { Feature, MountContentPart } from '../../../internal/plugins/widget/interfaces';
 import { formatDate } from '../../../internal/utils/date-time';
 import Link from '../../../link/internal';
@@ -44,9 +45,10 @@ export default function RuntimeFeaturesNotificationDrawer<T>({
   mountItem?: MountContentPart<T>;
   featuresPageLink?: string;
 }) {
+  const i18n = useInternalI18n('features-notification-drawer');
+
   return (
-    // TODO i18n strings
-    <InternalDrawer header="Latest feature releases" disableContentPaddings={true}>
+    <InternalDrawer header={i18n('i18nStrings.title', '')} disableContentPaddings={true}>
       <Box
         padding={{ top: 'm', left: 'xl', right: 'xl', bottom: 'm' }}
         className={styles['runtime-feature-notifications-drawer-content']}
@@ -78,7 +80,7 @@ export default function RuntimeFeaturesNotificationDrawer<T>({
 
         {!!featuresPageLink && (
           <Box padding={{ top: 's' }} className={styles['runtime-feature-notifications-footer']}>
-            <Link href={featuresPageLink}>See all feature releases</Link>
+            <Link href={featuresPageLink}>{i18n('i18nStrings.viewAll', '')}</Link>
           </Box>
         )}
       </Box>
