@@ -66,13 +66,13 @@ export function useFeatureNotifications({ activeDrawersIds }: UseFeatureNotifica
               }
         )
         .sort((a, b) => b.releaseDate.getTime() - a.releaseDate.getTime());
-      // TODO pass correct properties
       awsuiPlugins.appLayout.registerDrawer({
         id: payload.id,
         defaultActive: false,
         resizable: true,
         defaultSize: 320,
 
+        // TODO Replace with i18n strings
         ariaLabels: {
           closeButton: 'Close button',
           content: 'Content',
