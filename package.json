@@ -6,7 +6,13 @@
     "url": "https://github.com/cloudscape-design/components.git"
   },
   "homepage": "https://cloudscape.design",
-  "files": [],
+  "main": "./lib/components/index.js",
+  "types": "./lib/components/index.d.ts",
+  "exports": {
+    ".": "./lib/components/index.js",
+    "./*": "./lib/components/*/index.js"
+  },
+  "files": ["lib"],
   "scripts": {
     "quick-build": "gulp quick-build",
     "build": "cross-env NODE_ENV=production gulp build",
